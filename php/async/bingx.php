@@ -499,6 +499,7 @@ class bingx extends Exchange {
                 ),
                 'networks' => array(
                     'ARB' => 'ARBITRUM',
+                    'MATIC' => 'POLYGON',
                 ),
             ),
         ));
@@ -613,10 +614,11 @@ class bingx extends Exchange {
                             'max' => $this->safe_number($rawNetwork, 'withdrawMax'),
                         ),
                     );
+                    $fee = $this->safe_number($rawNetwork, 'withdrawFee');
                     if ($isDefault) {
-                        $fee = $this->safe_number($rawNetwork, 'withdrawFee');
                         $defaultLimits = $limits;
                     }
+                    $precision = $this->safe_number($rawNetwork, 'withdrawPrecision');
                     $networkActive = $networkDepositEnabled || $networkWithdrawEnabled;
                     $networks[$networkCode] = array(
                         'info' => $rawNetwork,
@@ -626,7 +628,7 @@ class bingx extends Exchange {
                         'active' => $networkActive,
                         'deposit' => $networkDepositEnabled,
                         'withdraw' => $networkWithdrawEnabled,
-                        'precision' => null,
+                        'precision' => $precision,
                         'limits' => $limits,
                     );
                 }
@@ -788,7 +790,7 @@ class bingx extends Exchange {
         $isActive = false;
         if (($this->safe_string($market, 'apiStateOpen') === 'true') && ($this->safe_string($market, 'apiStateClose') === 'true')) {
             $isActive = true; // $swap active
-        } elseif ($this->safe_bool($market, 'apiStateSell') && $this->safe_bool($market, 'apiStateBuy') && ($this->safe_number($market, 'status') === 1)) {
+        } elseif ($this->safe_bool($market, 'apiStateSell') && $this->safe_bool($market, 'apiStateBuy') && ($this->safe_string($market, 'status') === '1')) {
             $isActive = true; // $spot active
         }
         $isInverse = ($spot) ? null : $checkIsInverse;
