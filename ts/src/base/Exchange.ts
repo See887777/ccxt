@@ -74,6 +74,7 @@ const {
     , safeTimestamp2
     , rawencode
     , keysort
+    , sort
     , inArray
     , isEmpty
     , ordered
@@ -404,6 +405,7 @@ export default class Exchange {
     alias: boolean = false;
 
     deepExtend = deepExtend
+    deepExtendSafe = deepExtend
     isNode = isNode
     keys = keysFunc
     values = valuesFunc
@@ -412,6 +414,7 @@ export default class Exchange {
     flatten = flatten
     unique = unique
     indexBy = indexBy
+    indexBySafe = indexBy
     roundTimeframe = roundTimeframe
     sortBy = sortBy
     sortBy2 = sortBy2
@@ -475,6 +478,7 @@ export default class Exchange {
     safeTimestamp2 = safeTimestamp2
     rawencode = rawencode
     keysort = keysort
+    sort = sort
     inArray = inArray
     safeStringLower2 = safeStringLower2
     safeStringUpper2 = safeStringUpper2
@@ -1015,8 +1019,10 @@ export default class Exchange {
             currencies = await this.fetchCurrencies ()
             this.options['cachedCurrencies'] = currencies;
         }
-        const markets = await this.fetchMarkets (params)
-        delete this.options['cachedCurrencies'];
+        const markets = await this.fetchMarkets (params);
+        if ('cachedCurrencies' in this.options) {
+            delete this.options['cachedCurrencies'];
+        }
         return this.setMarkets (markets, currencies)
     }
 
@@ -3227,7 +3233,7 @@ export default class Exchange {
 
     setMarkets (markets, currencies = undefined) {
         const values = [];
-        this.markets_by_id = {};
+        this.markets_by_id = this.createSafeDictionary ();
         // handle marketId conflicts
         // we insert spot markets first
         const marketValues = this.sortBy (this.toArray (markets), 'spot', true, true);
@@ -3312,7 +3318,7 @@ export default class Exchange {
             const sortedCurrencies = this.sortBy (resultingCurrencies, 'code');
             this.currencies = this.deepExtend (this.currencies, this.indexBy (sortedCurrencies, 'code'));
         }
-        this.currencies_by_id = this.indexBy (this.currencies, 'id');
+        this.currencies_by_id = this.indexBySafe (this.currencies, 'id');
         const currenciesSortedByCode = this.keysort (this.currencies);
         this.codes = Object.keys (currenciesSortedByCode);
         return this.markets;
