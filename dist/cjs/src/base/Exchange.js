@@ -51,7 +51,7 @@ function _interopNamespace(e) {
 }
 
 // ----------------------------------------------------------------------------
-const { isNode, selfIsDefined, deepExtend, extend, clone, flatten, unique, indexBy, sortBy, sortBy2, safeFloat2, groupBy, aggregate, uuid, unCamelCase, precisionFromString, Throttler, capitalize, now, decimalToPrecision, safeValue, safeValue2, safeString, safeString2, seconds, milliseconds, binaryToBase16, numberToBE, base16ToBinary, iso8601, omit, isJsonEncodedObject, safeInteger, sum, omitZero, implodeParams, extractParams, json, merge, binaryConcat, hash, ecdsa, arrayConcat, encode, urlencode, hmac, numberToString, roundTimeframe, parseTimeframe, safeInteger2, safeStringLower, parse8601, yyyymmdd, safeStringUpper, safeTimestamp, binaryConcatArray, uuidv1, numberToLE, ymdhms, stringToBase64, decode, uuid22, safeIntegerProduct2, safeIntegerProduct, safeStringLower2, yymmdd, base58ToBinary, binaryToBase58, safeTimestamp2, rawencode, keysort, inArray, isEmpty, ordered, filterBy, uuid16, safeFloat, base64ToBinary, safeStringUpper2, urlencodeWithArrayRepeat, microseconds, binaryToBase64, strip, toArray, safeFloatN, safeIntegerN, safeIntegerProductN, safeTimestampN, safeValueN, safeStringN, safeStringLowerN, safeStringUpperN, urlencodeNested, urlencodeBase64, parseDate, ymd, base64ToString, crc32, packb, TRUNCATE, ROUND, DECIMAL_PLACES, NO_PADDING, TICK_SIZE, SIGNIFICANT_DIGITS, sleep } = functions;
+const { isNode, selfIsDefined, deepExtend, extend, clone, flatten, unique, indexBy, sortBy, sortBy2, safeFloat2, groupBy, aggregate, uuid, unCamelCase, precisionFromString, Throttler, capitalize, now, decimalToPrecision, safeValue, safeValue2, safeString, safeString2, seconds, milliseconds, binaryToBase16, numberToBE, base16ToBinary, iso8601, omit, isJsonEncodedObject, safeInteger, sum, omitZero, implodeParams, extractParams, json, merge, binaryConcat, hash, ecdsa, arrayConcat, encode, urlencode, hmac, numberToString, roundTimeframe, parseTimeframe, safeInteger2, safeStringLower, parse8601, yyyymmdd, safeStringUpper, safeTimestamp, binaryConcatArray, uuidv1, numberToLE, ymdhms, stringToBase64, decode, uuid22, safeIntegerProduct2, safeIntegerProduct, safeStringLower2, yymmdd, base58ToBinary, binaryToBase58, safeTimestamp2, rawencode, keysort, sort, inArray, isEmpty, ordered, filterBy, uuid16, safeFloat, base64ToBinary, safeStringUpper2, urlencodeWithArrayRepeat, microseconds, binaryToBase64, strip, toArray, safeFloatN, safeIntegerN, safeIntegerProductN, safeTimestampN, safeValueN, safeStringN, safeStringLowerN, safeStringUpperN, urlencodeNested, urlencodeBase64, parseDate, ymd, base64ToString, crc32, packb, TRUNCATE, ROUND, DECIMAL_PLACES, NO_PADDING, TICK_SIZE, SIGNIFICANT_DIGITS, sleep } = functions;
 // ----------------------------------------------------------------------------
 /**
  * @class Exchange
@@ -155,6 +155,7 @@ class Exchange {
         this.streaming = {};
         this.alias = false;
         this.deepExtend = deepExtend;
+        this.deepExtendSafe = deepExtend;
         this.isNode = isNode;
         this.keys = generic.keys;
         this.values = generic.values;
@@ -163,6 +164,7 @@ class Exchange {
         this.flatten = flatten;
         this.unique = unique;
         this.indexBy = indexBy;
+        this.indexBySafe = indexBy;
         this.roundTimeframe = roundTimeframe;
         this.sortBy = sortBy;
         this.sortBy2 = sortBy2;
@@ -226,6 +228,7 @@ class Exchange {
         this.safeTimestamp2 = safeTimestamp2;
         this.rawencode = rawencode;
         this.keysort = keysort;
+        this.sort = sort;
         this.inArray = inArray;
         this.safeStringLower2 = safeStringLower2;
         this.safeStringUpper2 = safeStringUpper2;
@@ -746,7 +749,9 @@ class Exchange {
             this.options['cachedCurrencies'] = currencies;
         }
         const markets = await this.fetchMarkets(params);
-        delete this.options['cachedCurrencies'];
+        if ('cachedCurrencies' in this.options) {
+            delete this.options['cachedCurrencies'];
+        }
         return this.setMarkets(markets, currencies);
     }
     /**
@@ -1109,15 +1114,10 @@ class Exchange {
         const closedClients = [];
         for (let i = 0; i < clients.length; i++) {
             const client = clients[i];
-            client.error = new errors.ExchangeClosedByUser(this.id + ' closedByUser');
+            delete this.clients[client.url];
             closedClients.push(client.close());
         }
-        await Promise.all(closedClients);
-        for (let i = 0; i < clients.length; i++) {
-            const client = clients[i];
-            delete this.clients[client.url];
-        }
-        return;
+        return Promise.all(closedClients);
     }
     async loadOrderBook(client, messageHash, symbol, limit = undefined, params = {}) {
         if (!(symbol in this.orderbooks)) {
@@ -2103,6 +2103,9 @@ class Exchange {
     async watchTrades(symbol, since = undefined, limit = undefined, params = {}) {
         throw new errors.NotSupported(this.id + ' watchTrades() is not supported yet');
     }
+    async unWatchOrders(symbol = undefined, params = {}) {
+        throw new errors.NotSupported(this.id + ' unWatchOrders() is not supported yet');
+    }
     async unWatchTrades(symbol, params = {}) {
         throw new errors.NotSupported(this.id + ' unWatchTrades() is not supported yet');
     }
@@ -2785,7 +2788,7 @@ class Exchange {
     }
     setMarkets(markets, currencies = undefined) {
         const values = [];
-        this.markets_by_id = {};
+        this.markets_by_id = this.createSafeDictionary();
         // handle marketId conflicts
         // we insert spot markets first
         const marketValues = this.sortBy(this.toArray(markets), 'spot', true, true);
@@ -2875,7 +2878,7 @@ class Exchange {
             const sortedCurrencies = this.sortBy(resultingCurrencies, 'code');
             this.currencies = this.deepExtend(this.currencies, this.indexBy(sortedCurrencies, 'code'));
         }
-        this.currencies_by_id = this.indexBy(this.currencies, 'id');
+        this.currencies_by_id = this.indexBySafe(this.currencies, 'id');
         const currenciesSortedByCode = this.keysort(this.currencies);
         this.codes = Object.keys(currenciesSortedByCode);
         return this.markets;
@@ -7046,7 +7049,7 @@ class Exchange {
         return reconstructedDate;
     }
     convertMarketIdExpireDate(date) {
-        // parse 03JAN24 to 240103
+        // parse 03JAN24 to 240103.
         const monthMappping = {
             'JAN': '01',
             'FEB': '02',
@@ -7167,7 +7170,7 @@ class Exchange {
                 const symbolAndTimeFrame = symbolsAndTimeFrames[i];
                 const symbol = this.safeString(symbolAndTimeFrame, 0);
                 const timeframe = this.safeString(symbolAndTimeFrame, 1);
-                if (symbol in this.ohlcvs) {
+                if ((this.ohlcvs !== undefined) && (symbol in this.ohlcvs)) {
                     if (timeframe in this.ohlcvs[symbol]) {
                         delete this.ohlcvs[symbol][timeframe];
                     }
@@ -7195,7 +7198,7 @@ class Exchange {
             }
         }
         else {
-            if (topic === 'myTrades') {
+            if (topic === 'myTrades' && (this.myTrades !== undefined)) {
                 // don't reset this.myTrades directly here
                 // because in c# we need to use a different object (thread-safe dict)
                 const keys = Object.keys(this.myTrades);
@@ -7206,7 +7209,7 @@ class Exchange {
                     }
                 }
             }
-            else if (topic === 'orders') {
+            else if (topic === 'orders' && (this.orders !== undefined)) {
                 const orderSymbols = Object.keys(this.orders);
                 for (let i = 0; i < orderSymbols.length; i++) {
                     const orderSymbol = orderSymbols[i];
@@ -7215,7 +7218,7 @@ class Exchange {
                     }
                 }
             }
-            else if (topic === 'ticker') {
+            else if (topic === 'ticker' && (this.tickers !== undefined)) {
                 const tickerSymbols = Object.keys(this.tickers);
                 for (let i = 0; i < tickerSymbols.length; i++) {
                     const tickerSymbol = tickerSymbols[i];

@@ -4000,7 +4000,7 @@ export default class binance extends Exchange {
         //
         //     {
         //         "symbol": "BTCUSDT",
-        //         "markPrice": "11793.63104562", // mark price
+        //         "markPrice": "11793.63104561", // mark price
         //         "indexPrice": "11781.80495970", // index price
         //         "estimatedSettlePrice": "11781.16138815", // Estimated Settle Price, only useful in the last hour before the settlement starts
         //         "lastFundingRate": "0.00038246",  // This is the lastest estimated funding rate
@@ -10487,7 +10487,7 @@ export default class binance extends Exchange {
             else {
                 throw new NotSupported(this.id + ' loadLeverageBrackets() supports linear and inverse contracts only');
             }
-            this.options['leverageBrackets'] = {};
+            this.options['leverageBrackets'] = this.createSafeDictionary();
             for (let i = 0; i < response.length; i++) {
                 const entry = response[i];
                 const marketId = this.safeString(entry, 'symbol');

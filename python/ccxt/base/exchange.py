@@ -4,7 +4,7 @@
 
 # -----------------------------------------------------------------------------
 
-__version__ = '4.4.87'
+__version__ = '4.4.91'
 
 # -----------------------------------------------------------------------------
 
@@ -907,6 +907,10 @@ class Exchange(object):
         return collections.OrderedDict(sorted(dictionary.items(), key=lambda t: t[0]))
 
     @staticmethod
+    def sort(array):
+        return sorted(array)
+
+    @staticmethod
     def extend(*args):
         if args is not None:
             result = None
@@ -955,6 +959,11 @@ class Exchange(object):
     @staticmethod
     def groupBy(array, key):
         return Exchange.group_by(array, key)
+
+
+    @staticmethod
+    def index_by_safe(array, key):
+        return Exchange.index_by(array, key)  # wrapper for go
 
     @staticmethod
     def index_by(array, key):
@@ -1037,7 +1046,7 @@ class Exchange(object):
         return _urlencode.urlencode(result, quote_via=_urlencode.quote)
 
     @staticmethod
-    def rawencode(params={}):
+    def rawencode(params={}, sort=False):
         return _urlencode.unquote(Exchange.urlencode(params))
 
     @staticmethod
@@ -1536,7 +1545,8 @@ class Exchange(object):
             currencies = self.fetch_currencies()
             self.options['cachedCurrencies'] = currencies
         markets = self.fetch_markets(params)
-        del self.options['cachedCurrencies']
+        if 'cachedCurrencies' in self.options:
+            del self.options['cachedCurrencies']
         return self.set_markets(markets, currencies)
 
     def fetch_markets(self, params={}):
@@ -2570,6 +2580,9 @@ class Exchange(object):
     def watch_trades(self, symbol: str, since: Int = None, limit: Int = None, params={}):
         raise NotSupported(self.id + ' watchTrades() is not supported yet')
 
+    def un_watch_orders(self, symbol: Str = None, params={}):
+        raise NotSupported(self.id + ' unWatchOrders() is not supported yet')
+
     def un_watch_trades(self, symbol: str, params={}):
         raise NotSupported(self.id + ' unWatchTrades() is not supported yet')
 
@@ -3186,7 +3199,7 @@ class Exchange(object):
 
     def set_markets(self, markets, currencies=None):
         values = []
-        self.markets_by_id = {}
+        self.markets_by_id = self.create_safe_dictionary()
         # handle marketId conflicts
         # we insert spot markets first
         marketValues = self.sort_by(self.to_array(markets), 'spot', True, True)
@@ -3261,7 +3274,7 @@ class Exchange(object):
                 resultingCurrencies.append(highestPrecisionCurrency)
             sortedCurrencies = self.sort_by(resultingCurrencies, 'code')
             self.currencies = self.deep_extend(self.currencies, self.index_by(sortedCurrencies, 'code'))
-        self.currencies_by_id = self.index_by(self.currencies, 'id')
+        self.currencies_by_id = self.index_by_safe(self.currencies, 'id')
         currenciesSortedByCode = self.keysort(self.currencies)
         self.codes = list(currenciesSortedByCode.keys())
         return self.markets
@@ -6779,7 +6792,7 @@ class Exchange(object):
         return reconstructedDate
 
     def convert_market_id_expire_date(self, date: str):
-        # parse 03JAN24 to 240103
+        # parse 03JAN24 to 240103.
         monthMappping = {
             'JAN': '01',
             'FEB': '02',
@@ -6884,7 +6897,7 @@ class Exchange(object):
                 symbolAndTimeFrame = symbolsAndTimeFrames[i]
                 symbol = self.safe_string(symbolAndTimeFrame, 0)
                 timeframe = self.safe_string(symbolAndTimeFrame, 1)
-                if symbol in self.ohlcvs:
+                if (self.ohlcvs is not None) and (symbol in self.ohlcvs):
                     if timeframe in self.ohlcvs[symbol]:
                         del self.ohlcvs[symbol][timeframe]
         elif symbolsLength > 0:
@@ -6900,7 +6913,7 @@ class Exchange(object):
                     if symbol in self.tickers:
                         del self.tickers[symbol]
         else:
-            if topic == 'myTrades':
+            if topic == 'myTrades' and (self.myTrades is not None):
                 # don't reset self.myTrades directly here
                 # because in c# we need to use a different object(thread-safe dict)
                 keys = list(self.myTrades.keys())
@@ -6908,13 +6921,13 @@ class Exchange(object):
                     key = keys[i]
                     if key in self.myTrades:
                         del self.myTrades[key]
-            elif topic == 'orders':
+            elif topic == 'orders' and (self.orders is not None):
                 orderSymbols = list(self.orders.keys())
                 for i in range(0, len(orderSymbols)):
                     orderSymbol = orderSymbols[i]
                     if orderSymbol in self.orders:
                         del self.orders[orderSymbol]
-            elif topic == 'ticker':
+            elif topic == 'ticker' and (self.tickers is not None):
                 tickerSymbols = list(self.tickers.keys())
                 for i in range(0, len(tickerSymbols)):
                     tickerSymbol = tickerSymbols[i]

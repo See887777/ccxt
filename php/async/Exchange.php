@@ -44,11 +44,11 @@ use React\EventLoop\Loop;
 
 use Exception;
 
-$version = '4.4.87';
+$version = '4.4.91';
 
 class Exchange extends \ccxt\Exchange {
 
-    const VERSION = '4.4.87';
+    const VERSION = '4.4.91';
 
     public $browser;
     public $marketsLoading = null;
@@ -249,8 +249,10 @@ class Exchange extends \ccxt\Exchange {
             $currencies = null;
             if (array_key_exists('fetchCurrencies', $this->has) && $this->has['fetchCurrencies'] === true) {
                 $currencies = React\Async\await($this->fetch_currencies());
+                $this->options['cachedCurrencies'] = $currencies;
             }
             $markets = React\Async\await($this->fetch_markets($params));
+            unset($this->options['cachedCurrencies']);
             return $this->set_markets ($markets, $currencies);
         }) ();
     }
@@ -1134,6 +1136,10 @@ class Exchange extends \ccxt\Exchange {
         throw new NotSupported($this->id . ' watchTrades() is not supported yet');
     }
 
+    public function un_watch_orders(?string $symbol = null, $params = array ()) {
+        throw new NotSupported($this->id . ' unWatchOrders() is not supported yet');
+    }
+
     public function un_watch_trades(string $symbol, $params = array ()) {
         throw new NotSupported($this->id . ' unWatchTrades() is not supported yet');
     }
@@ -1898,7 +1904,7 @@ class Exchange extends \ccxt\Exchange {
 
     public function set_markets($markets, $currencies = null) {
         $values = array();
-        $this->markets_by_id = array();
+        $this->markets_by_id = $this->create_safe_dictionary();
         // handle marketId conflicts
         // we insert spot $markets first
         $marketValues = $this->sort_by($this->to_array($markets), 'spot', true, true);
@@ -1983,7 +1989,7 @@ class Exchange extends \ccxt\Exchange {
             $sortedCurrencies = $this->sort_by($resultingCurrencies, 'code');
             $this->currencies = $this->deep_extend($this->currencies, $this->index_by($sortedCurrencies, 'code'));
         }
-        $this->currencies_by_id = $this->index_by($this->currencies, 'id');
+        $this->currencies_by_id = $this->index_by_safe($this->currencies, 'id');
         $currenciesSortedByCode = $this->keysort($this->currencies);
         $this->codes = is_array($currenciesSortedByCode) ? array_keys($currenciesSortedByCode) : array();
         return $this->markets;
@@ -6466,7 +6472,7 @@ class Exchange extends \ccxt\Exchange {
     }
 
     public function convert_market_id_expire_date(string $date) {
-        // parse 03JAN24 to 240103
+        // parse 03JAN24 to 240103.
         $monthMappping = array(
             'JAN' => '01',
             'FEB' => '02',
@@ -6588,7 +6594,7 @@ class Exchange extends \ccxt\Exchange {
                 $symbolAndTimeFrame = $symbolsAndTimeFrames[$i];
                 $symbol = $this->safe_string($symbolAndTimeFrame, 0);
                 $timeframe = $this->safe_string($symbolAndTimeFrame, 1);
-                if (is_array($this->ohlcvs) && array_key_exists($symbol, $this->ohlcvs)) {
+                if (($this->ohlcvs !== null) && (is_array($this->ohlcvs) && array_key_exists($symbol, $this->ohlcvs))) {
                     if (is_array($this->ohlcvs[$symbol]) && array_key_exists($timeframe, $this->ohlcvs[$symbol])) {
                         unset($this->ohlcvs[$symbol][$timeframe]);
                     }
@@ -6612,7 +6618,7 @@ class Exchange extends \ccxt\Exchange {
                 }
             }
         } else {
-            if ($topic === 'myTrades') {
+            if ($topic === 'myTrades' && ($this->myTrades !== null)) {
                 // don't reset $this->myTrades directly here
                 // because in c# we need to use a different object (thread-safe dict)
                 $keys = is_array($this->myTrades) ? array_keys($this->myTrades) : array();
@@ -6622,7 +6628,7 @@ class Exchange extends \ccxt\Exchange {
                         unset($this->myTrades[$key]);
                     }
                 }
-            } elseif ($topic === 'orders') {
+            } elseif ($topic === 'orders' && ($this->orders !== null)) {
                 $orderSymbols = is_array($this->orders) ? array_keys($this->orders) : array();
                 for ($i = 0; $i < count($orderSymbols); $i++) {
                     $orderSymbol = $orderSymbols[$i];
@@ -6630,7 +6636,7 @@ class Exchange extends \ccxt\Exchange {
                         unset($this->orders[$orderSymbol]);
                     }
                 }
-            } elseif ($topic === 'ticker') {
+            } elseif ($topic === 'ticker' && ($this->tickers !== null)) {
                 $tickerSymbols = is_array($this->tickers) ? array_keys($this->tickers) : array();
                 for ($i = 0; $i < count($tickerSymbols); $i++) {
                     $tickerSymbol = $tickerSymbols[$i];
