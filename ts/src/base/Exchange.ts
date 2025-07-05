@@ -74,6 +74,7 @@ const {
     , safeTimestamp2
     , rawencode
     , keysort
+    , sort
     , inArray
     , isEmpty
     , ordered
@@ -135,10 +136,10 @@ import {
     , InvalidProxySettings
     , ExchangeNotAvailable
     , ArgumentsRequired
-    , RateLimitExceeded,
-    BadRequest,
-    ExchangeClosedByUser,
-    UnsubscribeError} from "./errors.js"
+    , RateLimitExceeded
+    , BadRequest
+    , UnsubscribeError
+} from "./errors.js"
 
 import { Precise } from './Precise.js'
 
@@ -404,6 +405,7 @@ export default class Exchange {
     alias: boolean = false;
 
     deepExtend = deepExtend
+    deepExtendSafe = deepExtend
     isNode = isNode
     keys = keysFunc
     values = valuesFunc
@@ -412,6 +414,7 @@ export default class Exchange {
     flatten = flatten
     unique = unique
     indexBy = indexBy
+    indexBySafe = indexBy
     roundTimeframe = roundTimeframe
     sortBy = sortBy
     sortBy2 = sortBy2
@@ -475,6 +478,7 @@ export default class Exchange {
     safeTimestamp2 = safeTimestamp2
     rawencode = rawencode
     keysort = keysort
+    sort = sort
     inArray = inArray
     safeStringLower2 = safeStringLower2
     safeStringUpper2 = safeStringUpper2
@@ -1015,8 +1019,10 @@ export default class Exchange {
             currencies = await this.fetchCurrencies ()
             this.options['cachedCurrencies'] = currencies;
         }
-        const markets = await this.fetchMarkets (params)
-        delete this.options['cachedCurrencies'];
+        const markets = await this.fetchMarkets (params);
+        if ('cachedCurrencies' in this.options) {
+            delete this.options['cachedCurrencies'];
+        }
         return this.setMarkets (markets, currencies)
     }
 
@@ -1130,6 +1136,14 @@ export default class Exchange {
         } else {
             return hexData;
         }
+    }
+
+    mapToSafeMap(dict) {
+        return dict; // wrapper for go
+    }
+
+    safeMapToMap(dict) {
+        return dict; // wrapper for go
     }
 
     spawn(method, ...args) {
@@ -1401,15 +1415,10 @@ export default class Exchange {
         const closedClients = [];
         for (let i = 0; i < clients.length; i++) {
             const client = clients[i] as WsClient;
-            client.error = new ExchangeClosedByUser (this.id + ' closedByUser');
+            delete this.clients[client.url];
             closedClients.push(client.close ());
         }
-        await Promise.all (closedClients);
-        for (let i = 0; i < clients.length; i++) {
-            const client = clients[i] as WsClient;
-            delete this.clients[client.url];
-        }
-        return;
+        return Promise.all (closedClients);
     }
 
     async loadOrderBook (client, messageHash: string, symbol: string, limit: Int = undefined, params = {}) {
@@ -2469,6 +2478,10 @@ export default class Exchange {
         throw new NotSupported (this.id + ' watchTrades() is not supported yet');
     }
 
+    async unWatchOrders (symbol: Str = undefined, params = {}): Promise<any> {
+        throw new NotSupported (this.id + ' unWatchOrders() is not supported yet');
+    }
+
     async unWatchTrades (symbol: string, params = {}): Promise<any> {
         throw new NotSupported (this.id + ' unWatchTrades() is not supported yet');
     }
@@ -3227,7 +3240,7 @@ export default class Exchange {
 
     setMarkets (markets, currencies = undefined) {
         const values = [];
-        this.markets_by_id = {};
+        this.markets_by_id = this.createSafeDictionary ();
         // handle marketId conflicts
         // we insert spot markets first
         const marketValues = this.sortBy (this.toArray (markets), 'spot', true, true);
@@ -3253,14 +3266,14 @@ export default class Exchange {
             }
             values.push (market);
         }
-        this.markets = this.indexBy (values, 'symbol') as any;
+        this.markets = this.mapToSafeMap (this.indexBy (values, 'symbol') as any);
         const marketsSortedBySymbol = this.keysort (this.markets);
         const marketsSortedById = this.keysort (this.markets_by_id);
         this.symbols = Object.keys (marketsSortedBySymbol);
         this.ids = Object.keys (marketsSortedById);
         if (currencies !== undefined) {
             // currencies is always undefined when called in constructor but not when called from loadMarkets
-            this.currencies = this.deepExtend (this.currencies, currencies);
+            this.currencies = this.mapToSafeMap (this.deepExtend (this.currencies, currencies));
         } else {
             let baseCurrencies = [];
             let quoteCurrencies = [];
@@ -3289,8 +3302,8 @@ export default class Exchange {
             }
             baseCurrencies = this.sortBy (baseCurrencies, 'code', false, '');
             quoteCurrencies = this.sortBy (quoteCurrencies, 'code', false, '');
-            this.baseCurrencies = this.indexBy (baseCurrencies, 'code');
-            this.quoteCurrencies = this.indexBy (quoteCurrencies, 'code');
+            this.baseCurrencies = this.mapToSafeMap (this.indexBy (baseCurrencies, 'code'));
+            this.quoteCurrencies = this.mapToSafeMap (this.indexBy (quoteCurrencies, 'code'));
             const allCurrencies = this.arrayConcat (baseCurrencies, quoteCurrencies);
             const groupedCurrencies = this.groupBy (allCurrencies, 'code');
             const codes = Object.keys (groupedCurrencies);
@@ -3310,9 +3323,9 @@ export default class Exchange {
                 resultingCurrencies.push (highestPrecisionCurrency);
             }
             const sortedCurrencies = this.sortBy (resultingCurrencies, 'code');
-            this.currencies = this.deepExtend (this.currencies, this.indexBy (sortedCurrencies, 'code'));
+            this.currencies = this.mapToSafeMap (this.deepExtend (this.currencies, this.indexBy (sortedCurrencies, 'code')));
         }
-        this.currencies_by_id = this.indexBy (this.currencies, 'id');
+        this.currencies_by_id = this.indexBySafe (this.currencies, 'id');
         const currenciesSortedByCode = this.keysort (this.currencies);
         this.codes = Object.keys (currenciesSortedByCode);
         return this.markets;
@@ -4467,7 +4480,7 @@ export default class Exchange {
     }
 
     parseLeverageTiers (response: any, symbols: string[] = undefined, marketIdKey = undefined): LeverageTiers {
-        // marketIdKey should only be undefined when response is a dictionary
+        // marketIdKey should only be undefined when response is a dictionary.
         symbols = this.marketSymbols (symbols);
         const tiers = {};
         let symbolsLength = 0;
@@ -6022,6 +6035,10 @@ export default class Exchange {
         throw new NotSupported (this.id + ' fetchGreeks() is not supported yet');
     }
 
+    async fetchAllGreeks (symbols: Strings = undefined, params = {}): Promise<Greeks[]> {
+        throw new NotSupported (this.id + ' fetchAllGreeks() is not supported yet');
+    }
+
     async fetchOptionChain (code: string, params = {}): Promise<OptionChain> {
         throw new NotSupported (this.id + ' fetchOptionChain() is not supported yet');
     }
@@ -7562,6 +7579,31 @@ export default class Exchange {
         throw new NotSupported (this.id + ' parseGreeks () is not supported yet');
     }
 
+    parseAllGreeks (greeks, symbols: Strings = undefined, params = {}): Greeks[] {
+        //
+        // the value of greeks is either a dict or a list
+        //
+        const results = [];
+        if (Array.isArray (greeks)) {
+            for (let i = 0; i < greeks.length; i++) {
+                const parsedTicker = this.parseGreeks (greeks[i]);
+                const greek = this.extend (parsedTicker, params);
+                results.push (greek);
+            }
+        } else {
+            const marketIds = Object.keys (greeks);
+            for (let i = 0; i < marketIds.length; i++) {
+                const marketId = marketIds[i];
+                const market = this.safeMarket (marketId);
+                const parsed = this.parseGreeks (greeks[marketId], market);
+                const greek = this.extend (parsed, params);
+                results.push (greek);
+            }
+        }
+        symbols = this.marketSymbols (symbols);
+        return this.filterByArray (results, 'symbol', symbols);
+    }
+
     parseOption (chain: Dict, currency: Currency = undefined, market: Market = undefined): Option {
         throw new NotSupported (this.id + ' parseOption () is not supported yet');
     }
@@ -7701,7 +7743,7 @@ export default class Exchange {
     }
 
     convertMarketIdExpireDate (date: string): string {
-        // parse 03JAN24 to 240103
+        // parse 03JAN24 to 240103.
         const monthMappping = {
             'JAN': '01',
             'FEB': '02',
@@ -7805,16 +7847,34 @@ export default class Exchange {
         throw new NotSupported (this.id + ' fetchTransfers () is not supported yet');
     }
 
-    cleanUnsubscription (client, subHash: string, unsubHash: string) {
+    cleanUnsubscription (client, subHash: string, unsubHash: string, subHashIsPrefix = false) {
         if (unsubHash in client.subscriptions) {
             delete client.subscriptions[unsubHash];
         }
-        if (subHash in client.subscriptions) {
-            delete client.subscriptions[subHash];
-        }
-        if (subHash in client.futures) {
-            const error = new UnsubscribeError (this.id + ' ' + subHash);
-            client.reject (error, subHash);
+        if (!subHashIsPrefix) {
+            if (subHash in client.subscriptions) {
+                delete client.subscriptions[subHash];
+            }
+            if (subHash in client.futures) {
+                const error = new UnsubscribeError (this.id + ' ' + subHash);
+                client.reject (error, subHash);
+            }
+        } else {
+            const clientSubscriptions = Object.keys (client.subscriptions);
+            for (let i = 0; i < clientSubscriptions.length; i++) {
+                const sub = clientSubscriptions[i];
+                if (sub.startsWith (subHash)) {
+                    delete client.subscriptions[sub];
+                }
+            }
+            const clientFutures = Object.keys (client.futures);
+            for (let i = 0; i < clientFutures.length; i++) {
+                const future = clientFutures[i];
+                if (future.startsWith (subHash)) {
+                    const error = new UnsubscribeError (this.id + ' ' + future);
+                    client.reject (error, future);
+                }
+            }
         }
         client.resolve (true, unsubHash);
     }
@@ -7829,7 +7889,7 @@ export default class Exchange {
                 const symbolAndTimeFrame = symbolsAndTimeFrames[i];
                 const symbol = this.safeString (symbolAndTimeFrame, 0);
                 const timeframe = this.safeString (symbolAndTimeFrame, 1);
-                if (symbol in this.ohlcvs) {
+                if ((this.ohlcvs !== undefined) && (symbol in this.ohlcvs)) {
                     if (timeframe in this.ohlcvs[symbol]) {
                         delete this.ohlcvs[symbol][timeframe];
                     }
@@ -7853,25 +7913,11 @@ export default class Exchange {
                 }
             }
         } else {
-            if (topic === 'myTrades') {
-                // don't reset this.myTrades directly here
-                // because in c# we need to use a different object (thread-safe dict)
-                const keys = Object.keys (this.myTrades);
-                for (let i = 0; i < keys.length; i++) {
-                    const key = keys[i];
-                    if (key in this.myTrades) {
-                        delete this.myTrades[key];
-                    }
-                }
-            } else if (topic === 'orders') {
-                const orderSymbols = Object.keys (this.orders);
-                for (let i = 0; i < orderSymbols.length; i++) {
-                    const orderSymbol = orderSymbols[i];
-                    if (orderSymbol in this.orders) {
-                        delete this.orders[orderSymbol];
-                    }
-                }
-            } else if (topic === 'ticker') {
+            if (topic === 'myTrades' && (this.myTrades !== undefined)) {
+                this.myTrades = undefined;
+            } else if (topic === 'orders' && (this.orders !== undefined)) {
+                this.orders = undefined;
+            } else if (topic === 'ticker' && (this.tickers !== undefined)) {
                 const tickerSymbols = Object.keys (this.tickers);
                 for (let i = 0; i < tickerSymbols.length; i++) {
                     const tickerSymbol = tickerSymbols[i];

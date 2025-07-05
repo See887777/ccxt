@@ -1606,6 +1606,7 @@ class okx(Exchange, ImplicitAPI):
         #         "instType": "OPTION",
         #         "lever": "",
         #         "listTime": "1631262612280",
+        #         "contTdSwTime": "1631262812280",
         #         "lotSz": "1",
         #         "minSz": "1",
         #         "optType": "P",
@@ -1685,7 +1686,7 @@ class okx(Exchange, ImplicitAPI):
             'expiryDatetime': self.iso8601(expiry),
             'strike': self.parse_number(strikePrice),
             'optionType': optionType,
-            'created': self.safe_integer(market, 'listTime'),
+            'created': self.safe_integer_2(market, 'contTdSwTime', 'listTime'),  # contTdSwTime is public trading start time, while listTime considers pre-trading too
             'precision': {
                 'amount': self.safe_number(market, 'lotSz'),
                 'price': self.safe_number(market, 'tickSz'),
@@ -4892,7 +4893,7 @@ class okx(Exchange, ImplicitAPI):
         fee = self.safe_string(params, 'fee')
         if fee is None:
             currencies = self.fetch_currencies()
-            self.currencies = self.deep_extend(self.currencies, currencies)
+            self.currencies = self.map_to_safe_map(self.deep_extend(self.currencies, currencies))
             targetNetwork = self.safe_dict(currency['networks'], self.network_id_to_code(network), {})
             fee = self.safe_string(targetNetwork, 'fee')
             if fee is None:
@@ -6842,7 +6843,7 @@ class okx(Exchange, ImplicitAPI):
 
     def fetch_borrow_interest(self, code: Str = None, symbol: Str = None, since: Int = None, limit: Int = None, params={}) -> List[BorrowInterest]:
         """
-        fetch the interest owed by the user for borrowing currency for margin trading
+        fetch the interest owed b the user for borrowing currency for margin trading
 
         https://www.okx.com/docs-v5/en/#rest-api-account-get-interest-accrued-data
 

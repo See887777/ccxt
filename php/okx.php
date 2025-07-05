@@ -1598,6 +1598,7 @@ class okx extends Exchange {
         //         "instType" => "OPTION",
         //         "lever" => "",
         //         "listTime" => "1631262612280",
+        //         "contTdSwTime" => "1631262812280",
         //         "lotSz" => "1",
         //         "minSz" => "1",
         //         "optType" => "P",
@@ -1684,7 +1685,7 @@ class okx extends Exchange {
             'expiryDatetime' => $this->iso8601($expiry),
             'strike' => $this->parse_number($strikePrice),
             'optionType' => $optionType,
-            'created' => $this->safe_integer($market, 'listTime'),
+            'created' => $this->safe_integer_2($market, 'contTdSwTime', 'listTime'), // contTdSwTime is public trading start time, while listTime considers pre-trading too
             'precision' => array(
                 'amount' => $this->safe_number($market, 'lotSz'),
                 'price' => $this->safe_number($market, 'tickSz'),
@@ -5116,7 +5117,7 @@ class okx extends Exchange {
         $fee = $this->safe_string($params, 'fee');
         if ($fee === null) {
             $currencies = $this->fetch_currencies();
-            $this->currencies = $this->deep_extend($this->currencies, $currencies);
+            $this->currencies = $this->map_to_safe_map($this->deep_extend($this->currencies, $currencies));
             $targetNetwork = $this->safe_dict($currency['networks'], $this->network_id_to_code($network), array());
             $fee = $this->safe_string($targetNetwork, 'fee');
             if ($fee === null) {
@@ -7191,7 +7192,7 @@ class okx extends Exchange {
 
     public function fetch_borrow_interest(?string $code = null, ?string $symbol = null, ?int $since = null, ?int $limit = null, $params = array ()): array {
         /**
-         * fetch the $interest owed by the user for borrowing $currency for margin trading
+         * fetch the $interest owed b the user for borrowing $currency for margin trading
          *
          * @see https://www.okx.com/docs-v5/en/#rest-api-account-get-$interest-accrued-$data
          *
